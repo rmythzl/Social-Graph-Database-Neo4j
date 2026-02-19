@@ -1,169 +1,323 @@
-🧠 Social Graph Database — Neo4j
 
-Projeto de banco de dados em grafo usando Neo4j, simulando uma rede social realista, com 500 usuários, posts, grupos e múltiplos tipos de interações como amizades, curtidas e comentários.
 
-O objetivo é estudar grafos, análise de conexões sociais, descoberta de padrões e visualização de relacionamentos complexos.
+# 🧠 Social Network Graph — Neo4j + APOC
 
-📌 Tecnologias Utilizadas
+Este projeto implementa uma **simulação completa de rede social** utilizando **banco de dados em grafo (Neo4j)**, gerando **+1000 usuários fictícios**, posts, amizades, curtidas, comentários, compartilhamentos, grupos e **recomendações automáticas de amizade**, criando uma **estrutura altamente realista e escalável**.
 
-Neo4j
+O objetivo é estudar **modelagem de grafos sociais**, **análise de redes complexas**, **descoberta de padrões**, **recomendação social** e **visualização gráfica de conexões**.
 
-Cypher Query Language (CQL)
+---
 
-Neo4j Browser / Neo4j Bloom (visualização gráfica)
+# 🚀 Tecnologias
 
-🏗 Estrutura do Grafo
-Nós (Nodes)
-Label	Descrição
-User	Usuários da rede
-Post	Publicações
-Group	Grupos sociais
-Relacionamentos
-Tipo	Significado
-:FRIEND	Amizade
-:POSTED	Criou um post
-:LIKED	Curtiu
-:COMMENTED	Comentou
-:MEMBER_OF	Membro de grupo
-👥 Criação dos Usuários (500)
-UNWIND range(1,500) AS id
+* Neo4j
+* Cypher Query Language (CQL)
+* APOC Procedures
+* Neo4j Browser / Bloom
+
+---
+
+# 🏗 Arquitetura do Grafo
+
+## Nós (Nodes)
+
+| Label   | Descrição        |
+| ------- | ---------------- |
+| `User`  | Usuários da rede |
+| `Post`  | Publicações      |
+| `Group` | Grupos sociais   |
+
+---
+
+## Relacionamentos
+
+| Tipo            | Descrição           |
+| --------------- | ------------------- |
+| `:FRIENDS_WITH` | Amizade             |
+| `:CREATED`      | Criou post          |
+| `:LIKED`        | Curtiu              |
+| `:COMMENTED`    | Comentou            |
+| `:SHARED`       | Compartilhou        |
+| `:MEMBER_OF`    | Membro do grupo     |
+| `:RECOMMENDED`  | Sugestão de amizade |
+
+---
+
+# 📌 Pré-requisitos
+
+APOC instalado:
+
+```cypher
+RETURN apoc.version();
+```
+
+---
+
+# 🧱 Constraints — Integridade + Performance
+
+```cypher
+CREATE CONSTRAINT user_cpf_unique IF NOT EXISTS
+FOR (u:User) REQUIRE u.cpf IS UNIQUE;
+
+CREATE CONSTRAINT post_id_unique IF NOT EXISTS
+FOR (p:Post) REQUIRE p.id IS UNIQUE;
+
+CREATE CONSTRAINT group_id_unique IF NOT EXISTS
+FOR (g:Group) REQUIRE g.id IS UNIQUE;
+```
+
+---
+
+# 👥 Criação de +1000 Usuários (CPF Fictício Único)
+
+```cypher
+WITH [
+ 'Rian','Giulia','Lucas','Ana','Pedro','Mariana','Bruno','Carla','Felipe',
+ 'Julia','Rafael','Bianca','João','Camila','Daniel','Larissa','Gustavo',
+ 'Beatriz','Matheus','Isabela','Caio','Leticia','Henrique','Fernanda',
+ 'Vinicius','Natalia','Diego','Paula','Thiago','Aline','Igor','Luana'
+] AS nomes
+
+UNWIND range(1,1000) AS id
+WITH id, nomes, apoc.text.random(3,'0123456789') AS cpf1,
+     apoc.text.random(3,'0123456789') AS cpf2,
+     apoc.text.random(3,'0123456789') AS cpf3,
+     apoc.text.random(2,'0123456789') AS cpf4
+
 CREATE (:User {
-  id: id,
-  name: 'User_' + id,
-  age: 18 + (id % 40)
+    id: id,
+    nome: nomes[id % size(nomes)],
+    sobrenome: apoc.text.capitalize(apoc.text.random(6,'abcdefghijklmnopqrstuvwxyz')),
+    idade: 18 + (id % 45),
+    email: toLower(nomes[id % size(nomes)]) + id + '@email.com',
+    cpf: cpf1 + '.' + cpf2 + '.' + cpf3 + '-' + cpf4,
+    criado_em: datetime()
 });
+```
 
-📝 Criação de Posts
+---
+
+# 🤝 Gerar Amizades (Rede Social Realista)
+
+```cypher
 MATCH (u:User)
-WITH u, rand() AS r
-WHERE r < 0.4
-CREATE (u)-[:POSTED]->(:Post {
+WITH u
+LIMIT 1000
+CALL {
+  WITH u
+  MATCH (o:User)
+  WHERE o <> u
+  RETURN o
+  ORDER BY rand()
+  LIMIT 15
+}
+CREATE (u)-[:FRIENDS_WITH {since: date()}]->(o);
+```
+
+---
+
+# 📝 Gerar Posts
+
+```cypher
+MATCH (u:User)
+WITH u
+UNWIND range(1, 5) AS i
+CREATE (:Post {
   id: apoc.create.uuid(),
-  content: 'Post de ' + u.name,
-  createdAt: datetime()
+  conteudo: 'Post #' + i + ' de ' + u.nome,
+  criado_em: datetime()
+})<-[:CREATED]-(u);
+```
+
+---
+
+# ❤️ Curtidas
+
+```cypher
+MATCH (u:User), (p:Post)
+WITH u,p WHERE rand() < 0.12
+CREATE (u)-[:LIKED {em: datetime()}]->(p);
+```
+
+---
+
+# 💬 Comentários
+
+```cypher
+MATCH (u:User), (p:Post)
+WITH u,p WHERE rand() < 0.06
+CREATE (u)-[:COMMENTED {
+  texto: 'Comentário de ' + u.nome,
+  em: datetime()
+}]->(p);
+```
+
+---
+
+# 🔁 Compartilhamentos
+
+```cypher
+MATCH (u:User), (p:Post)
+WITH u,p WHERE rand() < 0.04
+CREATE (u)-[:SHARED {em: datetime()}]->(p);
+```
+
+---
+
+# 👨‍👩‍👧‍👦 Criar Grupos
+
+```cypher
+UNWIND range(1,50) AS id
+CREATE (:Group {
+  id: id,
+  nome: 'Grupo ' + id,
+  criado_em: datetime()
 });
+```
 
-🔗 Criação de Relacionamentos
-Amizades
-MATCH (u1:User), (u2:User)
-WHERE u1 <> u2 AND rand() < 0.02
-MERGE (u1)-[:FRIEND]-(u2);
+---
 
-Curtidas
-MATCH (u:User), (p:Post)
-WHERE rand() < 0.05
-MERGE (u)-[:LIKED]->(p);
+# 👥 Usuários em Grupos
 
-Comentários
-MATCH (u:User), (p:Post)
-WHERE rand() < 0.03
-MERGE (u)-[:COMMENTED]->(p);
-
-Grupos
-UNWIND range(1,20) AS id
-CREATE (:Group {name:'Group_' + id});
-
+```cypher
 MATCH (u:User), (g:Group)
-WHERE rand() < 0.08
-MERGE (u)-[:MEMBER_OF]->(g);
+WITH u,g WHERE rand() < 0.15
+CREATE (u)-[:MEMBER_OF]->(g);
+```
 
-🔍 Consultas Principais (FUNCIONAIS)
-🔹 Visualizar usuários em grafo
-MATCH (u:User)
-RETURN u
-LIMIT 50;
+---
 
-🔹 Ver relações entre 4 usuários específicos
-MATCH (u:User)
-WHERE u.name IN ['Rian','Giulia','Alice','Bruno']
-WITH collect(u) AS users
+# 🤖 Sistema de Recomendação de Amizades
 
-MATCH (common)
-WHERE all(x IN users WHERE (x)--(common))
-RETURN users, common;
+```cypher
+MATCH (u:User)-[:FRIENDS_WITH]->(:User)-[:FRIENDS_WITH]->(fof:User)
+WHERE NOT (u)-[:FRIENDS_WITH]->(fof) AND u <> fof
+WITH u, fof, count(*) AS conexoes
+WHERE conexoes >= 3
+CREATE (u)-[:RECOMMENDED {peso: conexoes}]->(fof);
+```
 
-🔹 Encontrar pessoas com relações em comum (até 5)
+---
+
+# 🔍 Consultas Avançadas
+
+## Pessoas com conexões em comum
+
+```cypher
 MATCH (u1:User)-[r1]-(n)-[r2]-(u2:User)
-WHERE u1 <> u2
 RETURN u1, r1, n, r2, u2
-LIMIT 25;
-
-📊 Visualização em Grafo (usuários + posts + conexões)
-MATCH path=(u:User)-[:LIKED|COMMENTED|FRIEND|POSTED*1..3]-(n)
-RETURN path
 LIMIT 50;
+```
 
-🧠 Consulta Avançada — Cadeia Social Complexa
+---
 
-"6 pessoas conectadas: um comentou, outro curtiu, outro é amigo de quem criou o post."
+## Cadeia social complexa (6 pessoas conectadas)
 
+```cypher
 MATCH 
 (a:User)-[:COMMENTED]->(p:Post)<-[:LIKED]-(b:User),
-(b)-[:FRIEND]-(c:User),
-(c)-[:FRIEND]-(d:User),
-(d)-[:POSTED]->(p)
-RETURN a, b, c, d, p
-LIMIT 10;
+(b)-[:FRIENDS_WITH]-(c:User),
+(c)-[:FRIENDS_WITH]-(d:User),
+(d)-[:CREATED]->(p)
+RETURN a,b,c,d,p
+LIMIT 20;
+```
 
-🔗 Usuários conectados através de interações em posts
+---
+
+## Usuários conectados via posts
+
+```cypher
 MATCH path=(u1:User)-[:LIKED|COMMENTED]->(p:Post)<-[:LIKED|COMMENTED]-(u2:User)
 RETURN path
-LIMIT 20;
+LIMIT 30;
+```
 
-🔥 Descobrir comunidades naturais
-CALL gds.louvain.stream({
-  nodeProjection: 'User',
-  relationshipProjection: {
-    FRIEND: {type:'FRIEND', orientation:'UNDIRECTED'}
-  }
-})
-YIELD nodeId, communityId
-RETURN gds.util.asNode(nodeId).name AS user, communityId
-ORDER BY communityId;
+---
 
-📈 Visualização Gráfica
+# 📊 Visualização em Grafo
 
-No Neo4j Browser, use o modo Graph para visualizar:
+```cypher
+MATCH path=(u:User)-[:LIKED|COMMENTED|CREATED|FRIENDS_WITH*1..3]-(n)
+RETURN path
+LIMIT 50;
+```
 
-Padrões sociais
+---
 
-Comunidades
+# 📈 Métricas e Validação
 
-Cadeias de influência
+## Total de usuários
 
-Conexões indiretas
+```cypher
+MATCH (u:User) RETURN count(u);
+```
 
-🚀 Objetivo do Projeto
+---
 
-Este projeto foi criado para:
+## Usuários mais conectados
 
-Aprender bancos de dados em grafo
+```cypher
+MATCH (u:User)-[:FRIENDS_WITH]->()
+RETURN u.nome, count(*) AS total
+ORDER BY total DESC
+LIMIT 10;
+```
 
-Simular redes sociais reais
+---
 
-Executar consultas complexas
+## Melhores recomendações
 
-Explorar análise de relacionamentos
+```cypher
+MATCH (u)-[r:RECOMMENDED]->(o)
+RETURN u.nome, o.nome, r.peso
+ORDER BY r.peso DESC
+LIMIT 10;
+```
 
-Gerar visualizações gráficas avançadas
+---
 
-📌 Possíveis Expansões
+# 🚀 Escalabilidade
 
-Sistema de recomendações
+Para aumentar a carga:
 
-Detecção de influência social
+```cypher
+range(1,1000)
+```
 
-Detecção de clusters
+➡ Troque para:
 
-Ranking de usuários mais ativos
+```cypher
+range(1,10000)
+```
 
-Caminhos mínimos entre pessoas
+Ou:
 
-👨‍💻 Autor
+```cypher
+range(1,50000)
+```
 
-Rian Gabriel Pires Barbalha
-Desenvolvedor Back-end Java | Graph Databases | Engenharia de Prompts | Dados
+Suporta **milhões de relações tranquilamente**.
 
-📧 Email: riangabrielpiresbarbalha@gmail.com
+---
 
-🌐 GitHub: https://github.com/rmythzl
+# 🧠 Casos de Uso Reais
+
+* Análise de influência social
+* Sistemas de recomendação
+* Detecção de comunidades
+* Clustering social
+* Grafos de amizade
+* Caminhos mínimos
+* Sugestão automática de conexões
+
+---
+
+# 👨‍💻 Autor
+
+**Rian Gabriel Pires Barbalha**
+Back-end Java | Graph Databases | IA | Engenharia de Prompts
+
+📧 Email: [riangabrielpiresbarbalha@gmail.com](mailto:riangabrielpiresbarbalha@gmail.com)
+🌐 GitHub: [https://github.com/rmythzl](https://github.com/rmythzl)
+
